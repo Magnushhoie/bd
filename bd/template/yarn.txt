@@ -1,0 +1,5 @@
+yarn build
+yarn dev
+npx eslint . --fix && npx prettier --write . && npx stylelint "**/*.{css,scss}" --fix
+yarn lint --fix
+yarn format

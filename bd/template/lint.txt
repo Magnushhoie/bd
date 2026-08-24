@@ -1,0 +1,3 @@
+isort . && black --line-length 120 . && flake8 .
+ruff format . && ruff check --fix .
+mypy --config-file tox.ini .

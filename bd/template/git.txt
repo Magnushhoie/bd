@@ -1,0 +1,7 @@
+git diff --cached
+git diff HEAD^ HEAD
+git for-each-ref --sort=-committerdate --format='%(committerdate:relative)%09%(refname:short)' refs/heads
+git shortlog -sn --no-merges
+git log -i -E --grep="fix|bug|broken" --name-only --format='' | sort | uniq -c | sort -nr | head -20
+git log --format='%ad' --date=format:'%Y-%m' | sort | uniq -c | sort -nr
+git log --format=format: --name-only --since="1 year ago" | sort | uniq -c | sort -nr
