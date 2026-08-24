@@ -138,7 +138,8 @@ def dispatch(template_dir, query=None):
         if not entries:
             warn(f"template/{name} has nothing to run")
             return 1
-        selected = fzf(entries, header=os.path.abspath(current_path), query=queries[0] if queries else None)
+        header_path = template_dir if name == COMMANDS_FILE else current_path
+        selected = fzf(entries, header=os.path.abspath(header_path), query=queries[0] if queries else None)
         if not selected:
             return 0
         if os.path.isdir(current_path):

@@ -93,7 +93,7 @@ def test_query_arguments_follow_nested_menus(tmp_path, monkeypatch):
 
     assert result.value.code == 0
     assert queries == ["yarn", "dev"]
-    assert headers == [str(template / "commands.txt"), str(template / "yarn.txt")]
+    assert headers == [str(template), str(template / "yarn.txt")]
     assert executed == ["yarn dev"]
 
 
