@@ -74,12 +74,12 @@ def view_commands(template_dir):
 
 
 def menu(template_dir, name):
-    """Return command lines or entries for a template folder."""
+    """Return the combined root menu or entries for a template file or folder."""
+    if not name:
+        return view_commands(template_dir)
     path = os.path.join(template_dir, name)
     if os.path.isdir(path):
         return view_dir(path)
-    if name == COMMANDS_FILE:
-        return view_commands(template_dir)
     return lines_of(path) if os.path.isfile(path) else []
 
 
@@ -130,19 +130,18 @@ def copy_file(template_dir, name):
 
 
 def dispatch(template_dir, query=None):
-    name = COMMANDS_FILE
+    name = ""
     queries = [query] if isinstance(query, str) else list(query or [])
     while True:
         current_path = os.path.join(template_dir, name)
         entries = menu(template_dir, name)
         if not entries:
-            warn(f"template/{name} has nothing to run")
+            warn(f"{current_path} has nothing to run")
             return 1
-        header_path = template_dir if name == COMMANDS_FILE else current_path
-        selected = fzf(entries, header=os.path.abspath(header_path), query=queries[0] if queries else None)
+        selected = fzf(entries, header=os.path.abspath(current_path), query=queries[0] if queries else None)
         if not selected:
             return 0
-        if os.path.isdir(current_path):
+        if name and os.path.isdir(current_path):
             selected_path = os.path.join(current_path, selected)
             if os.path.isdir(selected_path):
                 queries = queries[1:]

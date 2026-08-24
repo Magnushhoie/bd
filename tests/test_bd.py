@@ -58,7 +58,7 @@ def test_root_menu_combines_commands_with_dispatchable_entries(tmp_path):
     (template / ".hidden.sh").write_text("echo HIDDEN\n")
     (template / "starter").mkdir()
 
-    assert bd.menu(str(template), "commands.txt") == ["echo READY", "git.txt", "notes.md", "starter"]
+    assert bd.menu(str(template), "") == ["echo READY", "git.txt", "notes.md", "starter"]
 
 
 def test_submenu_runs_a_command(tmp_path, monkeypatch, capsys):
