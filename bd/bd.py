@@ -133,14 +133,14 @@ def dispatch(template_dir, query=None):
     name = COMMANDS_FILE
     queries = [query] if isinstance(query, str) else list(query or [])
     while True:
+        current_path = os.path.join(template_dir, name)
         entries = menu(template_dir, name)
         if not entries:
             warn(f"template/{name} has nothing to run")
             return 1
-        selected = fzf(entries, header=f"template/{name}", query=queries[0] if queries else None)
+        selected = fzf(entries, header=os.path.abspath(current_path), query=queries[0] if queries else None)
         if not selected:
             return 0
-        current_path = os.path.join(template_dir, name)
         if os.path.isdir(current_path):
             selected_path = os.path.join(current_path, selected)
             if os.path.isdir(selected_path):

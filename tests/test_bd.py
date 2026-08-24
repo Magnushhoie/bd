@@ -75,10 +75,12 @@ def test_query_arguments_follow_nested_menus(tmp_path, monkeypatch):
     template = make_template(tmp_path, "yarn.txt\n")
     (template / "yarn.txt").write_text("yarn build\nyarn dev\n")
     queries = []
+    headers = []
     executed = []
 
     def fake_fzf(lines, header="", query=None):
         queries.append(query)
+        headers.append(header)
         return "yarn.txt" if len(queries) == 1 else "yarn dev"
 
     monkeypatch.setattr(bd, "fzf", fake_fzf)
@@ -91,6 +93,7 @@ def test_query_arguments_follow_nested_menus(tmp_path, monkeypatch):
 
     assert result.value.code == 0
     assert queries == ["yarn", "dev"]
+    assert headers == [str(template / "commands.txt"), str(template / "yarn.txt")]
     assert executed == ["yarn dev"]
 
 
