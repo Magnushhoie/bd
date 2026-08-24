@@ -2,6 +2,8 @@
 
 A tiny [fzf](https://github.com/junegunn/fzf) command launcher for macOS and Linux.
 
+![img/image.png](img/image.png)
+
 Edit `bd/template/` to add commands.
 - `.txt` files are menus
 - `.md` files are viewed
