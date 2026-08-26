@@ -4,6 +4,7 @@ import shutil
 
 import pytest
 
+import bd as bd_package
 from bd import bd
 
 MISSING = [tool for tool in ("bash",) if not shutil.which(tool)]
@@ -32,6 +33,42 @@ def test_commands_run_from_invocation_directory(tmp_path, monkeypatch, capfd):
 
     assert bd.execute(str(template), "pwd") == 0
     assert capfd.readouterr().out.splitlines()[-1] == str(tmp_path)
+
+
+def test_view_menu_replaces_text(monkeypatch):
+    presented = []
+    executed = []
+
+    def fake_fzf(lines, header="", query=None):
+        presented.extend(lines)
+        assert header == "Example"
+        return lines[-1]
+
+    monkeypatch.setattr(bd, "fzf", fake_fzf)
+    monkeypatch.setattr(bd, "execute", lambda template_dir, line: executed.append(line) or 3)
+
+    result = bd_package.view_menu(
+        """
+command1
+command2
+command3 foo foo
+""",
+    replace={"foo": "bar"},
+        header="Example",
+    )
+
+    assert result == 3
+    assert presented == ["command1", "command2", "command3 bar bar"]
+    assert executed == ["command3 bar bar"]
+
+
+def test_view_menu_accepts_readlines_and_cancellation(monkeypatch):
+    presented = []
+    monkeypatch.setattr(bd, "fzf", lambda lines, header="", query=None: presented.extend(lines))
+    monkeypatch.setattr(bd, "execute", lambda template_dir, line: pytest.fail("cancelled menu should not execute"))
+
+    assert bd_package.view_menu(["echo foo\n", "\n"], replace={"foo": "bar"}) == 0
+    assert presented == ["echo bar"]
 
 
 def test_tabbed_lines_are_run_as_shell_commands(tmp_path, monkeypatch):

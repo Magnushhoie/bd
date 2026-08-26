@@ -44,6 +44,21 @@ def lines_of(path):
         return [line for line in f.read().splitlines() if line.strip()]
 
 
+def view_menu(commands, replace=None, header=""):
+    """Show commands in fzf and execute the selected line."""
+    lines = commands.splitlines() if isinstance(commands, str) else commands
+    lines = [line.rstrip("\r\n") for line in lines if line.strip()]
+    for old, new in (replace or {}).items():
+        lines = [line.replace(old, new) for line in lines]
+    if not lines:
+        warn("menu has nothing to run")
+        return 1
+    selected = fzf(lines, header=header)
+    if not selected:
+        return 0
+    return execute(TEMPLATE, selected)
+
+
 def list_template_entries(path):
     """Return sorted names in a template directory."""
     return sorted(os.listdir(path))

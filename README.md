@@ -28,7 +28,6 @@ bd hello.py  # runs hello.py
 bd git shortlog  # open git.txt -> runs git 'git shortlog -sn --no-merges'
 ```
 
-
 ## License
 
 MIT
