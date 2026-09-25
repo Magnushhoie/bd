@@ -1,72 +1,74 @@
+_git_log_format='%C(auto)%h %C(blue)%cr%C(auto)%d %s'
+
+_git_pick_branch() {
+  local prompt=$1 skip=$2
+  shift 2
+  git for-each-ref --sort=-committerdate \
+    --format='%(HEAD)%09%(committerdate:relative)%09%(refname:short)' refs/heads |
+    awk -F'\t' -v skip="$skip" '$1 != "*" && $3 != skip { print $2 "\t" $3 }' |
+    fzf --layout=reverse --delimiter='\t' --prompt="$prompt" \
+      --preview="git log --graph --color=always -20 --format='$_git_log_format' {2}" "$@" |
+    cut -f2
+}
+
 gbdel() {
   git rev-parse --git-dir >/dev/null || return
-  local base=main selected reply
+  local base selected reply
+  base=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD) || {
+    echo 'gbdel: origin/HEAD is not set. Run: git remote set-head origin --auto' >&2
+    return 1
+  }
   selected=$(
-    git for-each-ref --sort=committerdate \
-      --format='%(committerdate:relative)%09%(refname:short)' refs/heads |
-    awk -F'\t' -v base="$base" -v current="$(git branch --show-current)" '$2 != base && $2 != current' |
-    fzf --layout=reverse --multi --delimiter='\t' --prompt='Delete branches> ' --header="TAB mark · preview: not in $base" \
-      --preview="git log --color=always --oneline $base..{2}" |
-    cut -f2
+    _git_pick_branch 'Delete branches> ' "${base#origin/}" --tac --multi \
+      --header="TAB mark · preview: not in $base" \
+      --preview="git log --color=always --format='$_git_log_format' $base..{2}"
   )
   [ -z "$selected" ] && return 0
 
-  printf '  %s\n' $selected
+  sed 's/^/  /' <<< "$selected"
   read -r "reply?Force-delete these branches? [y/N] "
   [[ $reply == [yY]* ]] && xargs git branch -D <<< "$selected"
 }
 
+gbsel() {
+  git rev-parse --git-dir >/dev/null || return
+  local branch
+  branch=$(_git_pick_branch 'Switch branch> ' '')
+  [ -z "$branch" ] && return 0
+  git switch "$branch"
+}
 
 _git_pick_file() {
-  local format='%C(auto)%h %C(blue)%cr%Creset %s'
   awk 'NR == FNR { text[$0]; next } $0 in text && !seen[$0]++' \
     <(git grep -Il '') <(git log --relative --name-only --format=) |
     fzf --scheme=path --tiebreak=index --prompt="$1" \
-      --preview="git log --color=always -10 --format='$format' -- {}"
+      --preview="git log --color=always -10 --format='$_git_log_format' -- {}"
 }
 
 glog() {
   git rev-parse --git-dir >/dev/null || return
-  local format='%C(auto)%h %C(blue)%cr%Creset %s'
   local file
   while file=${1:-$(_git_pick_file 'Log file> ')}; [ -n "$file" ]; do
-    git log --color=always --format="$format" -- "${@:-$file}" |
+    git log --color=always --format="$_git_log_format" -- "${@:-$file}" |
       fzf --ansi --no-sort --layout=reverse --prompt='Log> ' \
         --header='ENTER open diff · ESC/CTRL-C back to files' \
-        --preview="git show --color=always --stat --patch --format='$format' {1} -- ${*:-$file}" \
-        --bind="enter:execute:git show --stat --patch --format='$format' {1} -- ${*:-$file}"
+        --preview="git show --color=always --stat --patch --format='$_git_log_format' {1} -- ${*:-$file}" \
+        --bind="enter:execute:git show --stat --patch --format='$_git_log_format' {1} -- ${*:-$file}"
     [ -n "$1" ] && return 0
   done
 }
 
 gblame() {
   git rev-parse --git-dir >/dev/null || return
-  local format='%C(auto)%h %C(blue)%cr%Creset %s'
   local file lines
   while file=${1:-$(_git_pick_file 'Blame file> ')}; [ -n "$file" ]; do
     lines=$(git blame -f -w -C --root --date=relative "$file") || return
     fzf --no-sort --layout=reverse --prompt='Blame> ' \
       --header='ENTER open diff · ESC/CTRL-C back to files' \
-      --preview="git show --color=always --stat --patch --format='$format' {1} -- :/{2}" \
-      --bind="enter:execute:git show --stat --patch --format='$format' {1} -- :/{2}" <<< "$lines"
+      --preview="git show --color=always --stat --patch --format='$_git_log_format' {1} -- :/{2}" \
+      --bind="enter:execute:git show --stat --patch --format='$_git_log_format' {1} -- :/{2}" <<< "$lines"
     [ -n "$1" ] && return 0
   done
-}
-
-_git_pick_branch() {
-  git for-each-ref --sort=-committerdate \
-    --format='%(HEAD) %(committerdate:relative)%09%(refname:short)' refs/heads |
-    fzf --delimiter='\t' --prompt="$1" \
-      --preview='git log --graph --color=always -20 --format="%C(auto)%h %C(blue)%cr%C(auto)%d %s" {2}' |
-    cut -f2
-}
-
-gbsel() {
-  git rev-parse --git-dir >/dev/null || return
-  local branch
-  branch=$(_git_pick_branch 'Switch branch> ')
-  [ -z "$branch" ] && return 0
-  git switch "$branch"
 }
 
 _git_diff_files() {
@@ -85,25 +87,16 @@ _git_diff_files() {
       --bind="enter:execute:git diff --stat --patch $* -- :/{1}"
 }
 
-gbdiff() {
-  git rev-parse --git-dir >/dev/null || return
-  local ref
-  while ref=${1:-$(_git_pick_branch 'Diff against> ')}; [ -n "$ref" ]; do
-    _git_diff_files "Diff vs $ref> " '' --merge-base "$ref" || return
-    [ -n "$1" ] && return 0
-  done
-}
-
 gbmerge() {
   git rev-parse --git-dir >/dev/null || return
   local target result tree conflicts header
-  while target=${1:-$(_git_pick_branch 'PR into> ')}; [ -n "$target" ]; do
+  while target=${1:-$(_git_pick_branch 'PR into> ' '')}; [ -n "$target" ]; do
     result=$(git merge-tree --write-tree --name-only --no-messages "$target" HEAD)
     [ -n "$result" ] || return 1
     tree=${result%%$'\n'*}
     conflicts=${result#"$tree"}
     [ -n "$conflicts" ] && header="CONFLICTS:${conflicts//$'\n'/ }" || header=clean
-    _git_diff_files "PR into $target> " "$header" "$target" "$tree"
+    _git_diff_files "PR into $target> " "$header" "$target" "$tree" || return
     [ -n "$1" ] && return 0
   done
 }
