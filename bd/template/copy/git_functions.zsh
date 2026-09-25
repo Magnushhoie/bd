@@ -112,7 +112,10 @@ gbmerge() {
 
 gadd() {
   git rev-parse --git-dir >/dev/null || return
-  local selected
+  local selected hidden header='TAB mark · ENTER add'
+  # Count unstaged/untracked files outside this folder; the list below only shows this folder and below.
+  hidden=$(git status --porcelain --untracked-files=all -- ':/' ':!.' | grep -c '^.[^ ]')
+  [ "$hidden" -gt 0 ] && header="$header"$'\n'"⚠ $hidden more changed file(s) outside this folder"
   # The temp index lives and dies inside this subshell; the traps clean it up
   # even on Ctrl-C (INT is turned into a normal exit so EXIT fires in both shells).
   selected=$(
@@ -127,7 +130,7 @@ gadd() {
     } |
       _git_diff_rows |
       fzf --ansi --multi --no-sort --layout=reverse --delimiter='\t' --with-nth=2 \
-        --prompt='Add files> ' --header='TAB mark · ENTER add' \
+        --prompt='Add files> ' --header="$header" \
         --preview="GIT_INDEX_FILE='$index' git diff --color=always --stat --patch -- {1}" |
       cut -f1
   ) || return
