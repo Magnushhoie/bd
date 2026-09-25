@@ -4,8 +4,8 @@ _git_pick_branch() {
   local prompt=$1 skip=$2
   shift 2
   git for-each-ref --sort=-committerdate \
-    --format='%(HEAD)%09%(committerdate:relative)%09%(refname:short)' refs/heads |
-    awk -F'\t' -v skip="$skip" '$1 != "*" && $3 != skip { print $2 "\t" $3 }' |
+    --format='%(HEAD) %(committerdate:relative)%09%(refname:short)' refs/heads |
+    awk -F'\t' -v skip="$skip" 'BEGIN { split(skip, names, " "); for (i in names) hidden[names[i]] } !($2 in hidden)' |
     fzf --layout=reverse --delimiter='\t' --prompt="$prompt" \
       --preview="git log --graph --color=always -20 --format='$_git_log_format' {2}" "$@" |
     cut -f2
@@ -19,7 +19,7 @@ gbdel() {
     return 1
   }
   selected=$(
-    _git_pick_branch 'Delete branches> ' "${base#origin/}" --tac --multi \
+    _git_pick_branch 'Delete branches> ' "$(git branch --show-current) ${base#origin/}" --tac --multi \
       --header="TAB mark · preview: not in $base" \
       --preview="git log --color=always --format='$_git_log_format' $base..{2}"
   )
@@ -39,16 +39,18 @@ gbsel() {
 }
 
 _git_pick_file() {
-  awk 'NR == FNR { text[$0]; next } $0 in text && !seen[$0]++' \
-    <(git grep -Il '') <(git log --relative --name-only --format=) |
-    fzf --scheme=path --tiebreak=index --prompt="$1" \
+  local prompt=$1
+  shift
+  awk 'NR == FNR { keep[$0]; next } $0 in keep && !seen[$0]++' \
+    <("$@") <(git log --relative --name-only --format=) |
+    fzf --scheme=path --tiebreak=index --prompt="$prompt" \
       --preview="git log --color=always -10 --format='$_git_log_format' -- {}"
 }
 
 glog() {
   git rev-parse --git-dir >/dev/null || return
   local file
-  while file=${1:-$(_git_pick_file 'Log file> ')}; [ -n "$file" ]; do
+  while file=${1:-$(_git_pick_file 'Log file> ' git ls-files)}; [ -n "$file" ]; do
     git log --color=always --format="$_git_log_format" -- "${@:-$file}" |
       fzf --ansi --no-sort --layout=reverse --prompt='Log> ' \
         --header='ENTER open diff · ESC/CTRL-C back to files' \
@@ -61,7 +63,7 @@ glog() {
 gblame() {
   git rev-parse --git-dir >/dev/null || return
   local file lines
-  while file=${1:-$(_git_pick_file 'Blame file> ')}; [ -n "$file" ]; do
+  while file=${1:-$(_git_pick_file 'Blame file> ' git grep -Il '')}; [ -n "$file" ]; do
     lines=$(git blame -f -w -C --root --date=relative "$file") || return
     fzf --no-sort --layout=reverse --prompt='Blame> ' \
       --header='ENTER open diff · ESC/CTRL-C back to files' \
@@ -89,14 +91,15 @@ _git_diff_files() {
 
 gbmerge() {
   git rev-parse --git-dir >/dev/null || return
-  local target result tree conflicts header
-  while target=${1:-$(_git_pick_branch 'PR into> ' '')}; [ -n "$target" ]; do
+  local source target result tree conflicts header
+  source=$(git rev-parse --abbrev-ref HEAD) || return
+  while target=${1:-$(_git_pick_branch "PR $source into> " "$source")}; [ -n "$target" ]; do
     result=$(git merge-tree --write-tree --name-only --no-messages "$target" HEAD)
     [ -n "$result" ] || return 1
     tree=${result%%$'\n'*}
     conflicts=${result#"$tree"}
     [ -n "$conflicts" ] && header="CONFLICTS:${conflicts//$'\n'/ }" || header=clean
-    _git_diff_files "PR into $target> " "$header" "$target" "$tree" || return
+    _git_diff_files "PR $source into $target> " "$header" "$target" "$tree" || return
     [ -n "$1" ] && return 0
   done
 }
