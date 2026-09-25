@@ -1,5 +1,14 @@
+# Git + fzf helpers. Source from ~/.zshrc or ~/.bashrc.
 _git_log_format='%C(auto)%h %C(blue)%cr%C(auto)%d %s'
 _git_pager='bat --language=diff --style=plain --paging=always'
+
+gpush() {
+  if git rev-parse --abbrev-ref @{u} >/dev/null 2>&1; then
+    git push "$@"
+  else
+    git push -u origin HEAD "$@"
+  fi
+}
 
 function gs {
   git status -- . || return
@@ -29,12 +38,13 @@ gbdel() {
   selected=$(
     _git_pick_branch 'Delete branches> ' "$(git branch --show-current) ${base#origin/}" --tac --multi \
       --header="TAB mark · preview: not in $base" \
-      --preview="git log --color=always --format='$_git_log_format' ${(qq)base}..{2}"
+      --preview="git log --color=always --format='$_git_log_format' $(printf %q "$base")..{2}"
   )
   [ -z "$selected" ] && return 0
 
   sed 's/^/  /' <<< "$selected"
-  read -r "reply?Force-delete these branches? [y/N] "
+  printf 'Force-delete these branches? [y/N] '
+  read -r reply
   [[ $reply == [yY]* ]] && xargs git branch -D <<< "$selected"
 }
 
@@ -57,7 +67,7 @@ glog() {
   git rev-parse --git-dir >/dev/null || return
   local file pathspec
   while file=${1:-$(_git_pick_file)}; [ -n "$file" ]; do
-    pathspec=${(j: :)${(@qq)${@:-$file}}}
+    pathspec=$(printf '%q ' "${@:-$file}")
     git log --color=always --format="$_git_log_format" -- "${@:-$file}" |
       fzf --ansi --no-sort --layout=reverse --prompt='Log> ' \
         --header='ENTER open diff · ESC/CTRL-C back to files' \
@@ -102,25 +112,25 @@ gbmerge() {
 
 gadd() {
   git rev-parse --git-dir >/dev/null || return
-  local index selected
-  index=$(mktemp) || return
-  {
+  local selected
+  # The temp index lives and dies inside this subshell; the traps clean it up
+  # even on Ctrl-C (INT is turned into a normal exit so EXIT fires in both shells).
+  selected=$(
+    index=$(mktemp) || exit
+    trap 'rm -f "$index"' EXIT
+    trap 'exit 130' INT TERM HUP
     cp "$(git rev-parse --git-path index)" "$index" 2>/dev/null || rm -f "$index"
     GIT_INDEX_FILE=$index git add --ignore-errors --ignore-removal --intent-to-add .
-    selected=$(
-      {
-        GIT_INDEX_FILE=$index git -c core.quotePath=false diff --raw --numstat --no-renames --relative --diff-filter=a
-        GIT_INDEX_FILE=$index git -c core.quotePath=false diff --raw --no-renames --relative --diff-filter=A
-      } |
-        _git_diff_rows |
-        fzf --ansi --multi --no-sort --layout=reverse --delimiter='\t' --with-nth=2 \
-          --prompt='Add files> ' --header='TAB mark · ENTER add' \
-          --preview="GIT_INDEX_FILE='$index' git diff --color=always --stat --patch -- {1}" |
-        cut -f1
-    )
-  } always {
-    rm -f "$index"
-  }
+    {
+      GIT_INDEX_FILE=$index git -c core.quotePath=false diff --raw --numstat --no-renames --relative --diff-filter=a
+      GIT_INDEX_FILE=$index git -c core.quotePath=false diff --raw --no-renames --relative --diff-filter=A
+    } |
+      _git_diff_rows |
+      fzf --ansi --multi --no-sort --layout=reverse --delimiter='\t' --with-nth=2 \
+        --prompt='Add files> ' --header='TAB mark · ENTER add' \
+        --preview="GIT_INDEX_FILE='$index' git diff --color=always --stat --patch -- {1}" |
+      cut -f1
+  ) || return
   [ -z "$selected" ] && return 0
   git add --pathspec-from-file=- <<< "$selected"
   gs
