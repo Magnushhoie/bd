@@ -61,7 +61,7 @@ _git_pick_branch() {
     cut -f2
 }
 
-gbs() {
+gbsel() {
   git rev-parse --git-dir >/dev/null || return
   local branch
   branch=$(_git_pick_branch 'Switch branch> ')
@@ -69,24 +69,41 @@ gbs() {
   git switch "$branch"
 }
 
+_git_diff_files() {
+  local prompt=$1 header=$2 changes
+  shift 2
+  changes=$(git diff --raw --numstat --no-renames "$@") || return
+  awk -F'\t' '
+    /^:/ { status[$2] = substr($1, length($1)); next }
+    NF {
+      name = $3; sub(".*/", "", name)
+      printf "%s\t%s \033[32m+%-4s\033[31m-%-4s\033[0m %s\n", $3, status[$3], $1, $2, name
+    }' <<< "$changes" |
+    fzf --ansi --no-sort --layout=reverse --delimiter='\t' --with-nth=2 \
+      --prompt="$prompt" --header="$header" \
+      --preview="git diff --color=always --stat --patch $* -- :/{1}" \
+      --bind="enter:execute:git diff --stat --patch $* -- :/{1}"
+}
+
 gbdiff() {
   git rev-parse --git-dir >/dev/null || return
-  local ref changes
+  local ref
   while ref=${1:-$(_git_pick_branch 'Diff against> ')}; [ -n "$ref" ]; do
-    changes=$(git diff --merge-base --name-status --no-renames "$ref") || return
-    awk '
-      BEGIN { FS = OFS = "\t"; color["A"] = 32; color["M"] = 33; color["D"] = 31 }
-      NR == FNR { added[$3] = $1; deleted[$3] = $2; next }
-      NF {
-        a = added[$2]; d = deleted[$2]
-        counts = a == "-" ? sprintf("%11s", "bin") : \
-          sprintf("\033[32m%5s\033[0m \033[31m%-5s\033[0m", a + 0 ? "+" a : "", d + 0 ? "-" d : "")
-        print $2, "\033[" color[$1] "m" $1 "\033[0m "counts" "$2
-      }' <(git diff --merge-base --numstat --no-renames "$ref") - <<< "$changes" |
-      fzf --ansi --no-sort --layout=reverse --delimiter='\t' --with-nth=2 --prompt="Diff vs $ref> " \
-        --header='ENTER open diff · ESC/CTRL-C back · A added · M modified · D deleted' \
-        --preview="git diff --color=always --merge-base '$ref' -- :/{1}" \
-        --bind="enter:execute:git diff --merge-base '$ref' -- :/{1}"
+    _git_diff_files "Diff vs $ref> " '' --merge-base "$ref" || return
+    [ -n "$1" ] && return 0
+  done
+}
+
+gbmerge() {
+  git rev-parse --git-dir >/dev/null || return
+  local target result tree conflicts header
+  while target=${1:-$(_git_pick_branch 'PR into> ')}; [ -n "$target" ]; do
+    result=$(git merge-tree --write-tree --name-only --no-messages "$target" HEAD)
+    [ -n "$result" ] || return 1
+    tree=${result%%$'\n'*}
+    conflicts=${result#"$tree"}
+    [ -n "$conflicts" ] && header="CONFLICTS:${conflicts//$'\n'/ }" || header=clean
+    _git_diff_files "PR into $target> " "$header" "$target" "$tree"
     [ -n "$1" ] && return 0
   done
 }
