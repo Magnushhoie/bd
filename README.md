@@ -4,14 +4,13 @@ A tiny [fzf](https://github.com/junegunn/fzf) command launcher for macOS and Lin
 
 ![img/image.png](img/image.png)
 
-Edit `bd/template/` to add commands.
-- `.txt` files are menus
-- `.md` files are viewed
-- `.py`, and `.sh` files are opened or executed
-- folders contain files to copy.
-- Commands run from the current directory. Symlinks are refused.
+TL;DR: Put commonly used shell commands, scripts or often copied over files in the `bd/template/` directory, then run `bd`:
+- `.txt` files are shown as menus of shell commands
+- `.py`, and `.sh` files are executed directly
+- Files inside folders can be copied over to the current directory (e.g. `AGENTS.md` or `.gitignore`)
 
-Menu commands run verbatim in your shell. Only use templates you trust.
+
+
 
 ## Install
 
