@@ -1,6 +1,7 @@
 """Focused tests for template dispatch and file copying."""
 
 import shutil
+from types import SimpleNamespace
 
 import pytest
 
@@ -32,7 +33,37 @@ def test_commands_run_from_invocation_directory(tmp_path, monkeypatch, capfd):
     monkeypatch.chdir(tmp_path)
 
     assert bd.execute(str(template), "pwd") == 0
-    assert capfd.readouterr().out.splitlines()[-1] == str(tmp_path)
+    output = capfd.readouterr().out.splitlines()
+    assert output[0] == "bd running: pwd"
+    assert output[-1] == str(tmp_path)
+
+
+def test_dispatch_returns_130_when_fzf_is_cancelled(tmp_path, monkeypatch, capsys):
+    template = make_template(tmp_path, "echo READY\n")
+    monkeypatch.setattr(
+        bd.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=130, stdout=""),
+    )
+
+    assert bd.dispatch(str(template)) == 130
+    assert capsys.readouterr().out.splitlines() == [f"bd showing: {template}"]
+
+
+def test_dispatch_exits_cleanly_when_command_is_interrupted(tmp_path, monkeypatch, capsys):
+    template = make_template(tmp_path, "git diff --cached\n")
+    monkeypatch.setattr(bd, "fzf", lambda *args, **kwargs: "git diff --cached")
+
+    def interrupting_run(cmd, shell=False):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(bd, "run", interrupting_run)
+
+    assert bd.dispatch(str(template)) == 130
+    assert capsys.readouterr().out.splitlines() == [
+        f"bd showing: {template}",
+        "bd running: git diff --cached",
+    ]
 
 
 def test_view_menu_replaces_text(monkeypatch):
@@ -64,7 +95,12 @@ command3 foo foo
 
 def test_view_menu_accepts_readlines_and_cancellation(monkeypatch):
     presented = []
-    monkeypatch.setattr(bd, "fzf", lambda lines, header="", query=None: presented.extend(lines))
+
+    def cancel_fzf(cmd, input, **kwargs):
+        presented.extend(input.splitlines())
+        return SimpleNamespace(returncode=130, stdout="")
+
+    monkeypatch.setattr(bd.subprocess, "run", cancel_fzf)
     monkeypatch.setattr(bd, "execute", lambda template_dir, line: pytest.fail("cancelled menu should not execute"))
 
     assert bd_package.view_menu(["echo foo\n", "\n"], replace={"foo": "bar"}) == 0
@@ -105,7 +141,9 @@ def test_submenu_runs_a_command(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(bd, "fzf", lambda lines, header="", query=None: next(selections))
 
     assert bd.dispatch(str(template)) == 0
-    assert "NESTED" in capsys.readouterr().out
+    output = capsys.readouterr().out.splitlines()
+    assert output.count(f"bd showing: {template}") == 1
+    assert "bd running: echo NESTED" in output
 
 
 def test_query_arguments_follow_nested_menus(tmp_path, monkeypatch):
@@ -168,7 +206,9 @@ def test_folder_opens_a_file_picker_and_copies_only_the_selected_file(tmp_path, 
     assert bd.dispatch(str(template)) == 0
     assert (tmp_path / "config.yml").read_text() == "name: demo\n"
     assert not (tmp_path / "starter").exists()
-    assert "config.yml" in capsys.readouterr().out
+    output = capsys.readouterr().out.splitlines()
+    assert output[:2] == [f"bd showing: {template}", f"bd showing: {starter}"]
+    assert "config.yml" in output[-1]
 
 
 def test_folder_copy_without_destination_does_not_confirm(tmp_path, monkeypatch):
