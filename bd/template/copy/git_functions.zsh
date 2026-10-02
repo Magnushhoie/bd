@@ -115,7 +115,7 @@ function gadd {
 function gdiff {
   local target commit
   git rev-parse --git-dir >/dev/null || return
-  while target=${1:-$(_git_pick_commit 'Diff against> ')}; [ -n "$target" ]; do
+  while target=${1:-$(_git_pick_commit 'Diff against> ' --no-preview)}; [ -n "$target" ]; do
     commit=$(git rev-parse --verify --quiet "$target^{commit}") || { echo "gdiff: not a commit: $target" >&2; return 1; }
     _git_including_untracked _git_changes_menu open "Diff $target> " 'ENTER open · ESC back' "$commit"
     (( $# == 0 )) || return 0
