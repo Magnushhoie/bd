@@ -33,6 +33,8 @@ def fzf(lines, header="", query=None):
             # No terminal to browse in, so zero matches must not open the UI and block.
             cmd.append("--exit-0")
     proc = subprocess.run(cmd, input="\n".join(lines), text=True, stdout=subprocess.PIPE, check=False)
+    if proc.returncode == 130:
+        raise KeyboardInterrupt
     if proc.returncode == 2:  # 0 picked, 1 no match, 130 cancelled — 2 is fzf itself failing
         sys.exit(f"bd: fzf failed (exit {proc.returncode})")
     return proc.stdout.strip() or None
@@ -53,7 +55,10 @@ def view_menu(commands, replace=None, header=""):
     if not lines:
         warn("menu has nothing to run")
         return 1
-    selected = fzf(lines, header=header)
+    try:
+        selected = fzf(lines, header=header)
+    except KeyboardInterrupt:
+        return 0
     if not selected:
         return 0
     return execute(TEMPLATE, selected)
@@ -121,8 +126,7 @@ def resolve(template_dir, line):
 def execute(template_dir, line):
     """Run one line: route template files by extension, else hand it to the shell."""
     cmd, shell = resolve(template_dir, line)
-    if shell:
-        print(line)
+    print(f"bd running: {line}")
     return run(cmd, shell=shell)
 
 
@@ -149,36 +153,41 @@ def dispatch(template_dir, query=None):
     queries = [query] if isinstance(query, str) else list(query or [])
     while True:
         current_path = os.path.join(template_dir, name)
-        entries = menu(template_dir, name)
-        if not entries:
-            warn(f"{current_path} has nothing to run")
-            return 1
-        selected = fzf(entries, header=os.path.abspath(current_path), query=queries[0] if queries else None)
-        if not selected:
-            return 0
-        if name and os.path.isdir(current_path):
-            selected_path = os.path.join(current_path, selected)
-            if os.path.isdir(selected_path):
-                queries = queries[1:]
-                name = os.path.join(name, selected)
-                continue
-            if os.path.isfile(selected_path):
-                return copy_file(template_dir, os.path.join(name, selected))
-            return 1
         try:
-            first, *_ = shlex.split(selected)
-        except ValueError:
+            if os.path.isdir(current_path):
+                print(f"bd showing: {os.path.realpath(current_path)}")
+            entries = menu(template_dir, name)
+            if not entries:
+                warn(f"{current_path} has nothing to run")
+                return 1
+            selected = fzf(entries, header=os.path.abspath(current_path), query=queries[0] if queries else None)
+            if not selected:
+                return 0
+            if name and os.path.isdir(current_path):
+                selected_path = os.path.join(current_path, selected)
+                if os.path.isdir(selected_path):
+                    queries = queries[1:]
+                    name = os.path.join(name, selected)
+                    continue
+                if os.path.isfile(selected_path):
+                    return copy_file(template_dir, os.path.join(name, selected))
+                return 1
+            try:
+                first, *_ = shlex.split(selected)
+            except ValueError:
+                return execute(template_dir, selected)
+            first_path = os.path.join(template_dir, first)
+            if os.path.isdir(first_path):
+                queries = queries[1:]
+                name = first
+                continue
+            if first.endswith(".txt") and os.path.isfile(first_path):
+                queries = queries[1:]
+                name = first
+                continue
             return execute(template_dir, selected)
-        first_path = os.path.join(template_dir, first)
-        if os.path.isdir(first_path):
-            queries = queries[1:]
-            name = first
-            continue
-        if first.endswith(".txt") and os.path.isfile(first_path):
-            queries = queries[1:]
-            name = first
-            continue
-        return execute(template_dir, selected)
+        except KeyboardInterrupt:
+            return 130
 
 
 def main(template_dir=TEMPLATE):
