@@ -14,6 +14,13 @@ alias ca="conda activate"
 # General
 alias autolint="isort . && black --line-length 120 . && flake8 ."
 
+vram() {
+    nvidia-smi --id=0 \
+        --query-gpu=memory.used,memory.total,utilization.gpu,temperature.gpu \
+        --format=csv,noheader,nounits |
+        awk -F', *' '{printf "VRAM: %s/%s MiB | GPU: %s%% | Temp: %s°C\n", $1, $2, $3, $4}'
+}
+
 # Git
 alias ga="git add"
 alias gmp="git commit -m fix && git push"
